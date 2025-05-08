@@ -13,7 +13,7 @@ const ChatPage = () => {
   const receiverId = queryParams.get("receiverId");
   const rawRole = queryParams.get("role");
   const receiverRole = rawRole?.toUpperCase() === "USER" ? "STUDENT" : rawRole?.toUpperCase() || "STUDENT";
-  
+
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
   const [userId, setUserId] = useState(null);
@@ -69,11 +69,11 @@ const ChatPage = () => {
 
   const fetchMessages = useCallback(async () => {
     if (!userId || !receiverId) return;
-    
+
     try {
       const res = await axios.get(
-        `http://localhost:1217/api/messages/conversation?user1=${userId}&user2=${receiverId}`,
-        { headers: { Authorization: `Bearer ${token}` } }
+          `http://localhost:1217/api/messages/conversation?user1=${userId}&user2=${receiverId}`,
+          { headers: { Authorization: `Bearer ${token}` } }
       );
       setMessages(res.data);
       res.data.forEach((msg) => {
@@ -88,20 +88,20 @@ const ChatPage = () => {
 
   const fetchReceiverInfo = useCallback(async () => {
     if (!receiverId) return;
-    
+
     try {
       const res = await axios.get(
-        `http://localhost:1217/api/search/profile/${receiverId}?role=${receiverRole}`,
-        { headers: { Authorization: `Bearer ${token}` } }
+          `http://localhost:1217/api/search/profile/${receiverId}?role=${receiverRole}`,
+          { headers: { Authorization: `Bearer ${token}` } }
       );
       setReceiverInfo(res.data);
 
       const imgRes = await axios.get(
-        `http://localhost:1217/api/search/image?userId=${receiverId}&role=${receiverRole}`,
-        { 
-          responseType: "blob",
-          headers: { Authorization: `Bearer ${token}` } 
-        }
+          `http://localhost:1217/api/search/image?userId=${receiverId}&role=${receiverRole}`,
+          {
+            responseType: "blob",
+            headers: { Authorization: `Bearer ${token}` }
+          }
       );
       setReceiverImage(URL.createObjectURL(imgRes.data));
     } catch (err) {
@@ -113,15 +113,15 @@ const ChatPage = () => {
   const markMessageAsRead = useCallback(async (messageId) => {
     try {
       await axios.post(
-        `http://localhost:1217/api/messages/${messageId}/read`,
-        null,
-        { headers: { Authorization: `Bearer ${token}` } }
+          `http://localhost:1217/api/messages/${messageId}/read`,
+          null,
+          { headers: { Authorization: `Bearer ${token}` } }
       );
-      
+
       setMessages((prev) =>
-        prev.map((m) => (m.id === messageId ? { ...m, read: true } : m))
+          prev.map((m) => (m.id === messageId ? { ...m, read: true } : m))
       );
-      
+
       setConversations(prev => prev.map(conv => {
         if (conv.userId === parseInt(receiverId)) {
           return {
@@ -139,40 +139,40 @@ const ChatPage = () => {
   const fetchConversationImages = useCallback(async (convs) => {
     const newImages = {};
     await Promise.all(
-      convs.map(async (conv) => {
-        try {
-          const res = await axios.get(
-            `http://localhost:1217/api/search/image?userId=${conv.userId}&role=${conv.role}`,
-            { 
-              responseType: "blob",
-              headers: { Authorization: `Bearer ${token}` } 
-            }
-          );
-          newImages[conv.userId] = URL.createObjectURL(res.data);
-        } catch (err) {
-          newImages[conv.userId] = DEFAULT_PROFILE_PICTURE;
-        }
-      })
+        convs.map(async (conv) => {
+          try {
+            const res = await axios.get(
+                `http://localhost:1217/api/search/image?userId=${conv.userId}&role=${conv.role}`,
+                {
+                  responseType: "blob",
+                  headers: { Authorization: `Bearer ${token}` }
+                }
+            );
+            newImages[conv.userId] = URL.createObjectURL(res.data);
+          } catch (err) {
+            newImages[conv.userId] = DEFAULT_PROFILE_PICTURE;
+          }
+        })
     );
     setConversationImages(newImages);
   }, [token]);
 
   const fetchConversations = useCallback(async () => {
     if (!userId) return;
-    
+
     try {
       setLoadingConversations(true);
       const res = await axios.get(
-        `http://localhost:1217/api/messages/conversations/history?userId=${userId}`,
-        { headers: { Authorization: `Bearer ${token}` } }
+          `http://localhost:1217/api/messages/conversations/history?userId=${userId}`,
+          { headers: { Authorization: `Bearer ${token}` } }
       );
-      
+
       const sortedConversations = res.data.sort((a, b) => {
         const dateA = new Date(a.timestamp);
         const dateB = new Date(b.timestamp);
         return dateB - dateA;
       });
-      
+
       setConversations(sortedConversations);
       fetchConversationImages(sortedConversations);
     } catch (err) {
@@ -184,25 +184,56 @@ const ChatPage = () => {
 
   const syncConversationState = useCallback((updatedMessage) => {
     setConversations(prev => {
-      const otherUserId = updatedMessage.senderId === userId 
-        ? updatedMessage.receiverId 
-        : updatedMessage.senderId;
-      
-      const existingConvIndex = prev.findIndex(conv => 
-        conv.userId === otherUserId
+      const otherUserId = updatedMessage.senderId === userId
+          ? updatedMessage.receiverId
+          : updatedMessage.senderId;
+
+      const existingConvIndex = prev.findIndex(conv =>
+          conv.userId === otherUserId
       );
+
+      // Si le message est complètement supprimé
+      if (updatedMessage.completelyDeleted) {
+        // Si c'est le dernier message d'une conversation
+        const updatedConversations = prev.map(conv => {
+          if (conv.lastMessageId === updatedMessage.id) {
+            // Trouver le nouveau dernier message
+            const conversationMessages = messages.filter(m =>
+                ((m.senderId === userId && m.receiverId === otherUserId) ||
+                    (m.senderId === otherUserId && m.receiverId === userId)) &&
+                shouldDisplayMessage(m)
+            );
+
+            const lastMsg = conversationMessages[conversationMessages.length - 1];
+
+            return {
+              ...conv,
+              lastMessage: lastMsg?.content || "Message supprimé",
+              lastMessageId: lastMsg?.id,
+              timestamp: lastMsg?.timestamp || conv.timestamp
+            };
+          }
+          return conv;
+        });
+
+        return updatedConversations.filter(shouldDisplayConversation);
+      }
 
       if (existingConvIndex >= 0) {
         const updatedConversations = prev.map(conv => {
           if (conv.userId === otherUserId) {
             const isUnreadUpdate = updatedMessage.receiverId === userId && !updatedMessage.read;
-            
+
             return {
               ...conv,
               lastMessage: updatedMessage.content,
+              lastMessageId: updatedMessage.id,
               timestamp: updatedMessage.timestamp,
               unreadCount: isUnreadUpdate ? conv.unreadCount + 1 : conv.unreadCount,
-              read: updatedMessage.senderId === userId
+              read: updatedMessage.senderId === userId,
+              deletedBySender: updatedMessage.deletedBySender,
+              deletedByReceiver: updatedMessage.deletedByReceiver,
+              completelyDeleted: updatedMessage.completelyDeleted
             };
           }
           return conv;
@@ -220,9 +251,15 @@ const ChatPage = () => {
           firstname: receiverInfo?.firstname || "Nouvel utilisateur",
           lastname: receiverInfo?.lastname || "",
           lastMessage: updatedMessage.content,
+          lastMessageId: updatedMessage.id,
           timestamp: updatedMessage.timestamp,
           unreadCount: updatedMessage.receiverId === userId && !updatedMessage.read ? 1 : 0,
-          read: updatedMessage.senderId === userId
+          read: updatedMessage.senderId === userId,
+          deletedBySender: updatedMessage.deletedBySender,
+          deletedByReceiver: updatedMessage.deletedByReceiver,
+          completelyDeleted: updatedMessage.completelyDeleted,
+          senderId: updatedMessage.senderId,
+          receiverId: updatedMessage.receiverId
         };
 
         const updatedConversations = [...prev, newConv].sort((a, b) => {
@@ -234,7 +271,7 @@ const ChatPage = () => {
         return updatedConversations;
       }
     });
-  }, [userId, receiverRole, receiverInfo]);
+  }, [userId, receiverRole, receiverInfo, messages]);
 
   useEffect(() => {
     if (userId && receiverId) {
@@ -279,18 +316,19 @@ const ChatPage = () => {
 
         client.subscribe(`/topic/messages/update/${userId}`, (updateOutput) => {
           const updatedMessage = JSON.parse(updateOutput.body);
-          
+
           setMessages(prevMessages => {
             if (updatedMessage.completelyDeleted) {
               return prevMessages.filter(msg => msg.id !== updatedMessage.id);
             }
-            
-            return prevMessages.map(msg => 
-              msg.id === updatedMessage.id ? updatedMessage : msg
+
+            return prevMessages.map(msg =>
+                msg.id === updatedMessage.id ? updatedMessage : msg
             );
           });
 
           syncConversationState(updatedMessage);
+          fetchConversations(); // Force le rafraîchissement des conversations
         });
       },
       onStompError: (frame) => {
@@ -304,7 +342,7 @@ const ChatPage = () => {
     return () => {
       if (stompClientRef.current) stompClientRef.current.deactivate();
     };
-  }, [userId, receiverId, token, markMessageAsRead, syncConversationState]);
+  }, [userId, receiverId, token, markMessageAsRead, syncConversationState, fetchConversations]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -313,32 +351,36 @@ const ChatPage = () => {
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !userId || !receiverId) return;
 
-    const message = {
-      senderId: userId,
-      receiverId: parseInt(receiverId),
-      content: newMessage,
-      timestamp: new Date().toISOString(),
-      read: false
-    };
-
     try {
+      const res = await axios.post(
+          `http://localhost:1217/api/messages`,
+          {
+            senderId: userId,
+            receiverId: parseInt(receiverId),
+            content: newMessage
+          },
+          { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      const sentMessage = res.data;
+
       if (stompClientRef.current?.connected) {
         stompClientRef.current.publish({
           destination: `/app/chat/${receiverId}`,
-          body: JSON.stringify(message),
+          body: JSON.stringify(sentMessage),
         });
       }
 
-      setMessages((prev) => [...prev, message]);
+      setMessages((prev) => [...prev, sentMessage]);
       setNewMessage("");
-      
+
       const conversationUpdate = {
-        ...message,
+        ...sentMessage,
         firstname: receiverInfo?.firstname || "Nouvel utilisateur",
         lastname: receiverInfo?.lastname || "",
         role: receiverRole
       };
-      
+
       syncConversationState(conversationUpdate);
     } catch (err) {
       console.error("Erreur d'envoi", err);
@@ -348,16 +390,53 @@ const ChatPage = () => {
   const handleDeleteMessage = async (messageId) => {
     try {
       setIsProcessing(true);
+
+      // Mise à jour optimiste des messages
+      setMessages(prevMessages =>
+          prevMessages.filter(msg => msg.id !== messageId)
+      );
+
+      // Mise à jour optimiste des conversations
+      setConversations(prevConversations => {
+        const updatedConversations = prevConversations.map(conv => {
+          // Si le dernier message de la conversation est celui qu'on supprime
+          if (conv.lastMessageId === messageId) {
+            // Trouver le nouveau dernier message non supprimé
+            const remainingMessages = messages.filter(m =>
+                m.id !== messageId &&
+                ((m.senderId === userId && m.receiverId === conv.userId) ||
+                    (m.senderId === conv.userId && m.receiverId === userId)) &&
+                shouldDisplayMessage(m)
+            );
+
+            const lastMessage = remainingMessages[remainingMessages.length - 1];
+
+            return {
+              ...conv,
+              lastMessage: lastMessage?.content || "Message supprimé",
+              lastMessageId: lastMessage?.id,
+              timestamp: lastMessage?.timestamp || conv.timestamp
+            };
+          }
+          return conv;
+        });
+
+        return updatedConversations.filter(shouldDisplayConversation);
+      });
+
+      // Envoyer la requête de suppression au serveur
       if (stompClientRef.current?.connected) {
         stompClientRef.current.publish({
           destination: `/app/chat/${messageId}/delete/${userId}`,
           body: JSON.stringify({}),
         });
       }
-      
-      setMessages(prevMessages => 
-        prevMessages.filter(msg => msg.id !== messageId)
-      );
+
+      // Rafraîchir les conversations après un court délai
+      setTimeout(() => {
+        fetchConversations();
+      }, 300);
+
     } catch (err) {
       console.error("Erreur lors de la suppression du message", err);
     } finally {
@@ -397,12 +476,27 @@ const ChatPage = () => {
 
   const shouldDisplayMessage = (msg) => {
     if (msg.completelyDeleted) return false;
-    
+
     if (msg.senderId === userId) {
       return !msg.deletedBySender;
     } else {
       return !msg.deletedByReceiver;
     }
+  };
+
+  const shouldDisplayConversation = (conv) => {
+    if (conv.completelyDeleted) return false;
+
+    // Si la conversation n'a pas de dernier message valide
+    if (!conv.lastMessage || conv.lastMessage === "Message supprimé") {
+      return false;
+    }
+
+    if (conv.senderId === userId && conv.deletedBySender) return false;
+
+    if (conv.receiverId === userId && conv.deletedByReceiver) return false;
+
+    return true;
   };
 
   const handleMessageClick = (messageId, event) => {
@@ -411,225 +505,222 @@ const ChatPage = () => {
   };
 
   return (
-    <div style={styles.container}>
-      <div style={styles.sidebar}>
-        <div style={styles.sidebarHeader}>
-          <h3 style={styles.sidebarTitle}>Messages</h3>
-          {loadingConversations && <div style={styles.loadingIndicator}>Chargement...</div>}
-        </div>
-        <div style={styles.conversationList}>
-          {conversations.map((conv) => {
-            const isActive = parseInt(receiverId) === conv.userId;
-            const hasUnread = conv.unreadCount > 0;
-            const conversationTime = formatDisplayTime(new Date(conv.timestamp));
-            
-            return (
-              <div
-                key={conv.userId}
-                onClick={() => navigate(`/ChatPage?receiverId=${conv.userId}&role=${conv.role}`)}
-                style={{
-                  ...styles.conversationItem,
-                  backgroundColor: isActive 
-                    ? "#e3f2fd"
-                    : hasUnread 
-                      ? "#f5f5f5"
-                      : "#ffffff",
-                }}
-              >
-                <img
-                  src={conversationImages[conv.userId] || DEFAULT_PROFILE_PICTURE}
-                  alt="Profile"
-                  style={styles.conversationAvatar}
-                />
-                <div style={styles.conversationContent}>
-                  <div style={styles.conversationHeader}>
-                    <strong style={{
-                      ...styles.conversationName,
-                      fontWeight: hasUnread ? "600" : "500",
-                      color: hasUnread ? "#000000" : "#333333"
-                    }}>
-                      {conv.firstname} {conv.lastname}
-                    </strong>
-                    <span style={styles.conversationTime}>
-                      {conversationTime}
-                    </span>
-                  </div>
-                  <div style={styles.conversationPreview}>
-                    <p style={{
-                      ...styles.conversationLastMessage,
-                      fontWeight: hasUnread ? "500" : "400"
-                    }}>
-                      {conv.lastMessage?.length > 25 
-                        ? `${conv.lastMessage.substring(0, 25)}...` 
-                        : conv.lastMessage}
-                    </p>
-                    {hasUnread && (
-                      <span style={styles.unreadBadge}>
-                        {conv.unreadCount}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      <div style={styles.chatArea}>
-        {receiverInfo && (
-          <div >
-          
+      <div style={styles.container}>
+        <div style={styles.sidebar}>
+          <div style={styles.sidebarHeader}>
+            <h3 style={styles.sidebarTitle}>Messages</h3>
+            {loadingConversations && <div style={styles.loadingIndicator}>Chargement...</div>}
           </div>
-        )}
+          <div style={styles.conversationList}>
+            {conversations
+                .filter(shouldDisplayConversation)
+                .map((conv) => {
+                  const isActive = parseInt(receiverId) === conv.userId;
+                  const hasUnread = conv.unreadCount > 0;
+                  const conversationTime = formatDisplayTime(new Date(conv.timestamp));
 
-        <div style={styles.messagesContainer}>
-          {messages
-            .filter(shouldDisplayMessage)
-            .map((msg, index) => {
-              const messageDate = formatDate(msg.timestamp);
-              const displayTime = formatDisplayTime(messageDate);
-              const displayDate = formatDisplayDate(messageDate);
-              const prevMessageDate = index > 0 ? formatDate(messages[index-1].timestamp) : null;
-              const prevDisplayDate = prevMessageDate ? formatDisplayDate(prevMessageDate) : null;
-              
-              return (
-                <div key={index} style={styles.messageWrapper}>
-                  <div style={{
-                    ...styles.messageContainer,
-                    alignItems: msg.senderId === userId ? "flex-end" : "flex-start",
-                  }}>
-                    {(index === 0 || displayDate !== prevDisplayDate) && displayDate && (
-                      <div style={styles.messageDate}>
-                        {displayDate}
-                      </div>
-                    )}
-                    
-                    {editingMessageId === msg.id ? (
-                      <div style={{ 
-                        ...styles.messageBubble, 
-                        backgroundColor: msg.senderId === userId ? "#dcf8c6" : "#ffffff",
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '5px'
-                      }}>
-                        <input
-                          type="text"
-                          value={editContent}
-                          onChange={(e) => setEditContent(e.target.value)}
-                          style={styles.editInput}
-                          disabled={isProcessing}
+                  return (
+                      <div
+                          key={conv.userId}
+                          onClick={() => navigate(`/ChatPage?receiverId=${conv.userId}&role=${conv.role}`)}
+                          style={{
+                            ...styles.conversationItem,
+                            backgroundColor: isActive
+                                ? "#e3f2fd"
+                                : hasUnread
+                                    ? "#f5f5f5"
+                                    : "#ffffff",
+                          }}
+                      >
+                        <img
+                            src={conversationImages[conv.userId] || DEFAULT_PROFILE_PICTURE}
+                            alt="Profile"
+                            style={styles.conversationAvatar}
                         />
-                        <div style={styles.editButtons}>
-                          <button 
-                            onClick={handleEditMessage}
-                            disabled={isProcessing}
-                            style={styles.saveEditButton}
-                          >
-                            {isProcessing ? "En cours..." : "✓"}
-                          </button>
-                          <button 
-                            onClick={cancelEditing}
-                            disabled={isProcessing}
-                            style={styles.cancelEditButton}
-                          >
-                            X
-                          </button>
+                        <div style={styles.conversationContent}>
+                          <div style={styles.conversationHeader}>
+                            <strong style={{
+                              ...styles.conversationName,
+                              fontWeight: hasUnread ? "600" : "500",
+                              color: hasUnread ? "#000000" : "#333333"
+                            }}>
+                              {conv.firstname} {conv.lastname}
+                            </strong>
+                            <span style={styles.conversationTime}>
+                        {conversationTime}
+                      </span>
+                          </div>
+                          <div style={styles.conversationPreview}>
+                            <p style={{
+                              ...styles.conversationLastMessage,
+                              fontWeight: hasUnread ? "500" : "400"
+                            }}>
+                              {conv.lastMessage?.length > 25
+                                  ? `${conv.lastMessage.substring(0, 25)}...`
+                                  : conv.lastMessage}
+                            </p>
+                            {hasUnread && (
+                                <span style={styles.unreadBadge}>
+                          {conv.unreadCount}
+                        </span>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    ) : (
-                      <div 
-                        onClick={(e) => msg.senderId === userId && handleMessageClick(msg.id, e)}
-                        style={{
-                          ...styles.messageBubble,
-                          backgroundColor: msg.senderId === userId ? "#dcf8c6" : "#ffffff",
-                          position: "relative"
-                        }}
-                      >
-                        <div style={styles.messageContent}>
-                          <div style={styles.messageText}>{msg.content}</div>
-                          <div style={styles.messageMeta}>
-                            {displayTime && <span style={styles.messageTime}>{displayTime}</span>}
-                            {msg.senderId === userId && (
-                              <>
+                  );
+                })}
+          </div>
+        </div>
+
+        <div style={styles.chatArea}>
+
+
+          <div style={styles.messagesContainer}>
+            {messages
+                .filter(shouldDisplayMessage)
+                .map((msg, index) => {
+                  const messageDate = formatDate(msg.timestamp);
+                  const displayTime = formatDisplayTime(messageDate);
+                  const displayDate = formatDisplayDate(messageDate);
+                  const prevMessageDate = index > 0 ? formatDate(messages[index-1].timestamp) : null;
+                  const prevDisplayDate = prevMessageDate ? formatDisplayDate(prevMessageDate) : null;
+
+                  return (
+                      <div key={msg.id || index} style={styles.messageWrapper}>
+                        <div style={{
+                          ...styles.messageContainer,
+                          alignItems: msg.senderId === userId ? "flex-end" : "flex-start",
+                        }}>
+                          {(index === 0 || displayDate !== prevDisplayDate) && displayDate && (
+                              <div style={styles.messageDate}>
+                                {displayDate}
+                              </div>
+                          )}
+
+                          {editingMessageId === msg.id ? (
+                              <div style={{
+                                ...styles.messageBubble,
+                                backgroundColor: msg.senderId === userId ? "#dcf8c6" : "#ffffff",
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '5px'
+                              }}>
+                                <input
+                                    type="text"
+                                    value={editContent}
+                                    onChange={(e) => setEditContent(e.target.value)}
+                                    style={styles.editInput}
+                                    disabled={isProcessing}
+                                />
+                                <div style={styles.editButtons}>
+                                  <button
+                                      onClick={handleEditMessage}
+                                      disabled={isProcessing}
+                                      style={styles.saveEditButton}
+                                  >
+                                    {isProcessing ? "En cours..." : "Valider"}
+                                  </button>
+                                  <button
+                                      onClick={cancelEditing}
+                                      disabled={isProcessing}
+                                      style={styles.cancelEditButton}
+                                  >
+                                    Annuler
+                                  </button>
+                                </div>
+                              </div>
+                          ) : (
+                              <div
+                                  onClick={(e) => msg.senderId === userId && handleMessageClick(msg.id, e)}
+                                  style={{
+                                    ...styles.messageBubble,
+                                    backgroundColor: msg.senderId === userId ? "#dcf8c6" : "#ffffff",
+                                    position: "relative"
+                                  }}
+                              >
+                                <div style={styles.messageContent}>
+                                  <div style={styles.messageText}>{msg.content}</div>
+                                  <div style={styles.messageMeta}>
+                                    {displayTime && <span style={styles.messageTime}>{displayTime}</span>}
+                                    {msg.senderId === userId && (
+                                        <>
                                 <span style={{
                                   ...styles.messageStatus,
                                   color: msg.read ? "#53bdeb" : "#999999",
                                 }}>
                                   {msg.read ? "✓✓" : "✓"}
                                 </span>
-                                {msg.edited && (
-                                  <span style={styles.editedLabel}>
+                                          {msg.edited && (
+                                              <span style={styles.editedLabel}>
                                     (modifié)
                                   </span>
+                                          )}
+                                        </>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {msg.senderId === userId && msg.id && selectedMessageId === msg.id && (
+                                    <div ref={menuRef} style={styles.messageMenu}>
+                                      <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            startEditing(msg);
+                                            setSelectedMessageId(null);
+                                          }}
+                                          disabled={isProcessing}
+                                          style={styles.menuItem}
+                                      >
+                                        <span style={styles.menuIcon}>✏️</span> Modifier
+                                      </button>
+                                      <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleDeleteMessage(msg.id);
+                                            setSelectedMessageId(null);
+                                          }}
+                                          disabled={isProcessing}
+                                          style={{ ...styles.menuItem, color: "#f44336" }}
+                                      >
+                                        <span style={styles.menuIcon}>🗑️</span> Supprimer
+                                      </button>
+                                    </div>
                                 )}
-                              </>
-                            )}
-                          </div>
+                              </div>
+                          )}
                         </div>
-
-                        {msg.senderId === userId && selectedMessageId === msg.id && (
-                          <div ref={menuRef} style={styles.messageMenu}>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                startEditing(msg);
-                                setSelectedMessageId(null);
-                              }}
-                              disabled={isProcessing}
-                              style={styles.menuItem}
-                            >
-                              <span style={styles.menuIcon}>✏️</span> Modifier
-                            </button>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDeleteMessage(msg.id);
-                                setSelectedMessageId(null);
-                              }}
-                              disabled={isProcessing}
-                              style={{ ...styles.menuItem, color: "#f44336" }}
-                            >
-                              <span style={styles.menuIcon}>🗑️</span> Supprimer
-                            </button>
-                          </div>
-                        )}
                       </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          <div ref={messagesEndRef} />
-        </div>
+                  );
+                })}
+            <div ref={messagesEndRef} />
+          </div>
 
-        {/* Afficher seulement si receiverId et role sont présents */}
-        {receiverId && rawRole ? (
-          <div style={styles.messageInputContainer}>
-            <input
-              type="text"
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-              placeholder="Écrivez un message..."
-              style={styles.messageInput}
-              disabled={isProcessing}
-            />
-            <button
-              onClick={handleSendMessage}
-              style={styles.sendButton}
-              disabled={isProcessing || !newMessage.trim()}
-            >
-              Envoyer
-            </button>
-          </div>
-        ) : (
-          <div style={styles.noRecipientMessage}>
-            <p>Sélectionnez une conversation pour envoyer un message</p>
-          </div>
-        )}
+          {receiverId && rawRole ? (
+              <div style={styles.messageInputContainer}>
+                <input
+                    type="text"
+                    value={newMessage}
+                    onChange={(e) => setNewMessage(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+                    placeholder="Écrivez un message..."
+                    style={styles.messageInput}
+                    disabled={isProcessing}
+                />
+                <button
+                    onClick={handleSendMessage}
+                    style={styles.sendButton}
+                    disabled={isProcessing || !newMessage.trim()}
+                >
+                  Envoyer
+                </button>
+              </div>
+          ) : (
+              <div style={styles.noRecipientMessage}>
+                <p>Sélectionnez une conversation pour envoyer un message</p>
+              </div>
+          )}
+        </div>
       </div>
-    </div>
   );
 };
 

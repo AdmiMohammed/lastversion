@@ -62,12 +62,21 @@ public class SecurityConfiguration {
                                 "/api/v1/companies/profile",
                                 "/api/v1/offers",
                                 "/error",
-                               "/ws/**"
+                               "/ws/**",
+                                "/pdf/download/**"
 
                         ).permitAll()
                         .requestMatchers("/api/v1/student/**").hasRole("STUDENT")
                         .requestMatchers("/api/v1/companies/**").hasRole("MANAGER")
                         .requestMatchers("/api/v1/profiles/my-profile").authenticated()
+                        .requestMatchers("/pdf/generate/**", "/pdf/generate-and-store/**").authenticated()
+
+                        .requestMatchers(HttpMethod.POST, "/applications/apply").hasRole("STUDENT")
+                        .requestMatchers(HttpMethod.POST, "/applications/students/**").hasRole("STUDENT")
+                        .requestMatchers(HttpMethod.GET, "/applications/applications/**").hasRole("MANAGER")
+
+                        //.requestMatchers(HttpMethod.POST, "/applications/applications/**").hasRole("MANAGER")
+                        .requestMatchers(HttpMethod.POST, "/applications/applications/**").hasRole("MANAGER")
 
                         .requestMatchers(HttpMethod.POST, "/api/v1/profiles/{id}/upload-documents").authenticated()
 

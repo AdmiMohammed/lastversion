@@ -82,6 +82,7 @@ public class AuthenticationService {
             extraClaims.put("role", user.getRole().name());
             extraClaims.put("firstname", user.getFirstname());
             extraClaims.put("lastname", user.getLastname());
+            extraClaims.put("userId", user.getId());
 
             var jwtToken = jwtService.generateToken(extraClaims, user);
             //var jwtToken = jwtService.generateToken(user);
@@ -128,6 +129,7 @@ public class AuthenticationService {
         extraClaims.put("role", user.getRole().name());
         extraClaims.put("firstname", user.getFirstname());
         extraClaims.put("lastname", user.getLastname());
+        extraClaims.put("userId", user.getId());
         var jwtToken = jwtService.generateToken(extraClaims, user);
 
 
