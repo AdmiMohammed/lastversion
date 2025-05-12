@@ -26,5 +26,6 @@ public class DashboardStatsDTO {
     private Map<String, Long> offersByType;
     private Map<String, Long> applicationsOverTime;
     private Map<String, Long> candidatesByField;
+    private List<RecentActivityDTO> recentActivities;
 }
 

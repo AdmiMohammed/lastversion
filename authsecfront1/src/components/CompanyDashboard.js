@@ -7,6 +7,7 @@ import {
     PolarAngleAxis, PolarRadiusAxis
 } from 'recharts';
 import 'bootstrap/dist/css/bootstrap.min.css';
+import { ClockHistory, Briefcase, PersonCheck, FileEarmarkText } from 'react-bootstrap-icons';
 
 // Color palette
 const COLORS = ['#4e79a7', '#f28e2b', '#e15759', '#76b7b2', '#59a14f', '#edc948', '#b07aa1', '#ff9da7', '#9c755f', '#bab0ac'];
@@ -19,6 +20,51 @@ const EmptyDataPlaceholder = ({ message }) => (
         </div>
     </div>
 );
+
+const ActivityIcon = ({ type }) => {
+    switch(type) {
+        case 'OFFER_CREATED':
+            return <Briefcase className="text-primary" size={20} />;
+        case 'APPLICATION_RECEIVED':
+            return <FileEarmarkText className="text-success" size={20} />;
+        case 'APPLICATION_STATUS_CHANGED':
+            return <PersonCheck className="text-warning" size={20} />;
+        default:
+            return <ClockHistory className="text-secondary" size={20} />;
+    }
+};
+
+const ActivityItem = ({ activity }) => {
+    const formatDate = (dateString) => {
+        const date = new Date(dateString);
+        return date.toLocaleString('fr-FR', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    };
+
+    return (
+        <div className="d-flex align-items-start mb-3">
+            <div className="me-3 mt-1">
+                <ActivityIcon type={activity.activityType} />
+            </div>
+            <div className="flex-grow-1">
+                <div className="d-flex justify-content-between">
+                    <strong className="text-dark">{activity.description}</strong>
+                    <small className="text-muted">{formatDate(activity.timestamp)}</small>
+                </div>
+                <div className="small text-muted">
+                    {activity.activityType === 'OFFER_CREATED' ? 'Nouvelle offre' :
+                        activity.activityType === 'APPLICATION_RECEIVED' ? 'Nouvelle candidature' :
+                            'Changement de statut'}
+                </div>
+            </div>
+        </div>
+    );
+};
 
 const CompanyDashboard = () => {
     const [stats, setStats] = useState(null);
@@ -92,7 +138,8 @@ const CompanyDashboard = () => {
                 applicationsByStatus: dashboardResponse.data.applicationsByStatus || {},
                 offersByType: dashboardResponse.data.offersByType || {},
                 applicationsOverTime: dashboardResponse.data.applicationsOverTime || {},
-                candidatesByField: dashboardResponse.data.candidatesByField || {}
+                candidatesByField: dashboardResponse.data.candidatesByField || {},
+                recentActivities: dashboardResponse.data.recentActivities || []
             };
 
             setStats(normalizedData);
@@ -104,7 +151,6 @@ const CompanyDashboard = () => {
             });
 
             if (err.response?.status === 404) {
-                // Si c'est une 404 mais que c'est pour le dashboard, afficher des données vides
                 if (err.config.url.includes('/api/dashboard/company/')) {
                     setStats({
                         totalOffers: 0,
@@ -119,7 +165,8 @@ const CompanyDashboard = () => {
                         applicationsByStatus: {},
                         offersByType: {},
                         applicationsOverTime: {},
-                        candidatesByField: {}
+                        candidatesByField: {},
+                        recentActivities: []
                     });
                 } else {
                     setError("Profil entreprise non trouvé");
@@ -339,7 +386,7 @@ const CompanyDashboard = () => {
                 ))}
             </div>
 
-            {/* Charts */}
+            {/* Charts and Activities */}
             <div className="row g-3">
                 {charts.map((item, index) => (
                     <div key={index} className={`col-12 ${index === 3 ? 'col-lg-6' : 'col-lg-4'} mb-3`}>
@@ -356,6 +403,27 @@ const CompanyDashboard = () => {
                         </div>
                     </div>
                 ))}
+
+                {/* Activités récentes */}
+                <div className="col-12 col-lg-6 mb-3">
+                    <div className="card shadow-sm h-100 rounded-3 border-0">
+                        <div className="card-body p-3">
+                            <h5 className="fw-bold mb-2" style={{ color: '#4e79a7' }}>Activités récentes</h5>
+                            <p className="text-muted small mb-3">Dernières actions sur votre compte</p>
+                            <div style={{ height: '300px', overflowY: 'auto' }}>
+                                {stats.recentActivities && stats.recentActivities.length > 0 ? (
+                                    <div className="activity-list">
+                                        {stats.recentActivities.map((activity, index) => (
+                                            <ActivityItem key={index} activity={activity} />
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <EmptyDataPlaceholder message="Aucune activité récente" />
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     );

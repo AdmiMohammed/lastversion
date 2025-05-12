@@ -2,6 +2,7 @@ package com.example.einternmatchback.dashboard.service;
 
 import com.example.einternmatchback.dashboard.dto.DashboardStatsDTO;
 import com.example.einternmatchback.dashboard.dto.OfferStatsDTO;
+import com.example.einternmatchback.dashboard.dto.RecentActivityDTO;
 import com.example.einternmatchback.dashboard.repository.DashboardRepository;
 import com.example.einternmatchback.AjoutOffers.repo.CompanyRepository;
 import com.example.einternmatchback.Postulation.Entity.ApplicationStatus;
@@ -10,6 +11,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -52,7 +55,7 @@ public class DashboardService {
             Map<String, Long> offersByType = safeGetOffersByType(companyId);
             Map<String, Long> applicationsOverTime = safeGetApplicationsOverTime(companyId);
             Map<String, Long> candidatesByField = safeGetCandidatesByField(companyId);
-
+            List<RecentActivityDTO> recentActivities = getCombinedRecentActivities(companyId);
             return DashboardStatsDTO.builder()
                     .totalOffers(totalOffers)
                     .activeOffers(activeOffers)
@@ -67,6 +70,7 @@ public class DashboardService {
                     .offersByType(offersByType)
                     .applicationsOverTime(applicationsOverTime)
                     .candidatesByField(candidatesByField)
+                    .recentActivities(recentActivities)
                     .build();
 
         } catch (Exception e) {
@@ -151,5 +155,54 @@ public class DashboardService {
     @FunctionalInterface
     private interface CountSupplier {
         Long get();
+    }
+    private List<RecentActivityDTO> getCombinedRecentActivities(Integer companyId) {
+        List<Map<String, Object>> activities = new ArrayList<>();
+
+        // Seules les activités disponibles avec vos classes
+        activities.addAll(safeGetActivities(() -> dashboardRepository.findRecentOfferCreations(companyId)));
+        activities.addAll(safeGetActivities(() -> dashboardRepository.findRecentApplications(companyId)));
+        activities.addAll(safeGetActivities(() -> dashboardRepository.findRecentStatusChanges(companyId)));
+
+        // Tri par date et limite à 5 activités
+        return activities.stream()
+                .sorted((a, b) -> ((LocalDateTime) b.get("timestamp")).compareTo((LocalDateTime) a.get("timestamp")))
+                .limit(5)
+                .map(this::mapToActivityDTO)
+                .collect(Collectors.toList());
+    }
+
+    private RecentActivityDTO mapToActivityDTO(Map<String, Object> activity) {
+        Object idObj = activity.get("relatedId");
+        Long relatedId = null;
+
+        if (idObj != null) {
+            if (idObj instanceof Integer) {
+                relatedId = ((Integer) idObj).longValue();
+            } else if (idObj instanceof Long) {
+                relatedId = (Long) idObj;
+            }
+        }
+
+        return RecentActivityDTO.builder()
+                .activityType((String) activity.get("activityType"))
+                .description((String) activity.get("description"))
+                .timestamp((LocalDateTime) activity.get("timestamp"))
+                .relatedId(relatedId)
+                .relatedEntityType((String) activity.get("relatedEntityType"))
+                .build();
+    }
+
+    private List<Map<String, Object>> safeGetActivities(ActivitySupplier supplier) {
+        try {
+            return supplier.get();
+        } catch (Exception e) {
+            return Collections.emptyList();
+        }
+    }
+
+    @FunctionalInterface
+    private interface ActivitySupplier {
+        List<Map<String, Object>> get();
     }
 }
