@@ -539,10 +539,15 @@ const Login = ({ setToken }) => {
     if (role === 'MANAGER') {
       setMessage(`Bienvenue ${name || 'Manager'} ! Redirection...`);
       setTimeout(() => navigate('/homecompany'), 1500);
-    } else {
+    }
+    else if  (role === 'ADMIN') {
+      setMessage(`Bienvenue Admin ${name} ! Redirection...`);
+      setTimeout(() => navigate('/admin'), 1500);
+    }else  {
       setMessage(`Bienvenue ${name || 'User'} ! Redirection...`);
       setTimeout(() => navigate('/home'), 1500);
     }
+
   };
 
   const handleSubmit = async (e) => {
